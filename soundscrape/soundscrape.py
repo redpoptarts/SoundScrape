@@ -79,6 +79,8 @@ def main():
                         help='Keep 30-second preview tracks')
     parser.add_argument('-v', '--version', action='store_true', default=False,
                         help='Display the current version of SoundScrape')
+    parser.add_argument('-s', '--sets', action='store_true', default=False,
+                        help='Download all playlists and their tracks for a single user')
     parser.add_argument('--complete', action='store_true',
                         help='Use to download an entire profile')
 
@@ -138,23 +140,25 @@ def process_complete(vargs):
     tracks_args['path'] = './Tracks/'
     if not exists(tracks_args['path']):
         mkdir(tracks_args['path'])
-    process_soundcloud(tracks_args)
+    # process_soundcloud(tracks_args)
 
     # Get /Likes
     likes_args = vargs
     likes_args['likes'] = True
+    # print sets_args['likes']
     likes_args['path'] = './Likes/'
     if not exists(likes_args['path']):
         mkdir(likes_args['path'])
     # process_soundcloud(likes_args)
 
     # Get /Playlists
-    # sets_args = vargs
-    # sets_args['sets'] = True
-    # sets_args['path'] = './Sets/'
-    # if not exists(sets_args['path']):
-    #     mkdir(sets_args['path'])
-    # process_soundcloud(sets_args)
+    sets_args = vargs
+    sets_args['sets'] = True
+    likes_args['likes'] = False
+    sets_args['path'] = './Sets/'
+    if not exists(sets_args['path']):
+        mkdir(sets_args['path'])
+    process_soundcloud(sets_args)
 
     return
 
@@ -171,7 +175,7 @@ def process_soundcloud(vargs):
     track_permalink = vargs['track']
     keep_previews = vargs['keep']
     folders = vargs['folders']
-    # sets = vargs['sets']
+    sets = vargs['sets']
 
     id3_extras = {}
     one_track = False
@@ -187,6 +191,7 @@ def process_soundcloud(vargs):
             artist_url = 'https://soundcloud.com/' + artist_url.lower()
             if vargs['likes'] or 'likes' in artist_url.lower():
                 likes = True
+                print "LIKES BECAUSE OF URL"
 
     print "ARTIST_URL"
     print artist_url
@@ -194,6 +199,7 @@ def process_soundcloud(vargs):
     if 'likes' in artist_url.lower():
         artist_url = artist_url[0:artist_url.find('/likes')]
         likes = True
+        print "IS ACTUALLY LIKES"
 
     if one_track:
         num_tracks = 1
@@ -222,32 +228,14 @@ def process_soundcloud(vargs):
                 resolved2 = soundcloud.resource.ResourceList(resolved2['collection'])
                 resolved.collection.extend(resolved2)
             resolved = resolved.collection
-        # elif sets:
-        #     print "SETS"
-        #     userId = str(client.get('/resolve', url=artist_url).id)
-        #     resolved = client.get('/users/' + userId + '/playlists', limit=200, linked_partitioning=1)
-
-        #     next_href = False
-        #     if(hasattr(resolved, 'next_href')):
-        #         next_href = resolved.next_href
-        #     while (next_href):
-
-        #         resolved2 = requests.get(next_href).json()
-        #         if('next_href' in resolved2):
-        #             next_href = resolved2['next_href']
-        #         else:
-        #             next_href = False
-        #         resolved2 = soundcloud.resource.ResourceList(resolved2['collection'])
-        #         resolved.collection.extend(resolved2)
-        #     resolved = resolved.collection
-
-        #     print "RESOLVED"
-        #     print resolved
+            print "INPUT LIKES"
+            print resolved
 
         else:
             resolved = client.get('/resolve', url=artist_url, limit=200)
 
     except Exception as e:  # HTTPError?
+        print "EXCEPTION PATH"
 
         # SoundScrape is trying to prevent us from downloading this.
         # We're going to have to stop trusting the API/client and
@@ -303,10 +291,12 @@ def process_soundcloud(vargs):
             tracks = resolved
         else:
             if resolved.kind == 'artist':
+                print "RESOLVED ARTIST"
                 artist = resolved
                 artist_id = str(artist.id)
                 tracks = client.get('/users/' + artist_id + '/tracks', limit=200)
             elif resolved.kind == 'playlist':
+                print "RESOLVED PLAYLIST"
                 id3_extras['album'] = resolved.title
                 if resolved.tracks != []:
                     tracks = resolved.tracks
@@ -318,12 +308,57 @@ def process_soundcloud(vargs):
                         download_track(track, resolved.title, keep_previews, folders, custom_path=vargs['path'])
 
             elif resolved.kind == 'track':
+                print "RESOLVED TRACK"
                 tracks = [resolved]
             elif resolved.kind == 'group':
+                print "RESOLVED GROUP"
                 group = resolved
                 group_id = str(group.id)
                 tracks = client.get('/groups/' + group_id + '/tracks', limit=200)
+            elif sets:
+                print "RESOLVED SET"
+                aggressive = True
+
+                userId = str(client.get('/resolve', url=artist_url).id)
+                resolved = client.get('/users/' + userId + '/playlists', limit=200, linked_partitioning=1)
+
+                next_href = False
+                if(hasattr(resolved, 'next_href')):
+                    next_href = resolved.next_href
+                while (next_href):
+
+                    resolved2 = requests.get(next_href).json()
+                    if('next_href' in resolved2):
+                        next_href = resolved2['next_href']
+                    else:
+                        next_href = False
+                    resolved2 = soundcloud.resource.ResourceList(resolved2['collection'])
+                    resolved.collection.extend(resolved2)
+                resolved = resolved.collection
+
+                print "INPUT SETS"
+                print resolved
+
+                for i, playlist in enumerate(resolved):
+                    print "PLAYLIST"
+                    print playlist
+                    print playlist.id
+                    print playlist.title
+
+                    id3_extras['album'] = playlist.title
+                    if playlist.tracks != []:
+                        print "HAS TRACKS"
+                        tracks = playlist.tracks
+                    else:
+                        print "NO TRACKS"
+                        tracks = get_soundcloud_api_playlist_data(playlist.id)['tracks']
+                        tracks = tracks[:num_tracks]
+                        aggressive = True
+                    for track in tracks:
+                        playlist_path = join(vargs['path'], playlist.title)
+                        download_track(track, playlist.title, keep_previews, folders, custom_path=playlist_path)
             else:
+                print "FALLBACK"
                 artist = resolved
                 artist_id = str(artist.id)
                 tracks = client.get('/users/' + artist_id + '/tracks', limit=200)
@@ -352,6 +387,7 @@ def process_soundcloud(vargs):
                                 filenames.append(filename)
 
         if not aggressive:
+            print "NOT AGGRESSIVE"
             filenames = download_tracks(client, tracks, num_tracks, vargs['downloadable'], vargs['folders'], vargs['path'],
                                         id3_extras=id3_extras)
 
@@ -569,6 +605,8 @@ def get_soundcloud_api2_data(artist_id):
     return parsed
 
 def get_soundcloud_api_playlist_data(playlist_id):
+    print "GET PLAYLIST:"
+    print playlist_id
     """
     Scrape the new API. Returns the parsed JSON response.
     """
