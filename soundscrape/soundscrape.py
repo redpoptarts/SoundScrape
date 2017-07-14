@@ -79,6 +79,8 @@ def main():
                         help='Keep 30-second preview tracks')
     parser.add_argument('-v', '--version', action='store_true', default=False,
                         help='Display the current version of SoundScrape')
+    parser.add_argument('--complete', action='store_true',
+                        help='Use to download an entire profile')
 
     args = parser.parse_args()
     vargs = vars(args)
@@ -115,14 +117,50 @@ def main():
         process_hive(vargs)
     elif 'musicbed.com' in artist_url:
         process_musicbed(vargs)
+    elif vargs['complete']:
+        process_complete(vargs)
     else:
         process_soundcloud(vargs)
 
+####################################################################
+# Complete Profile Download (Soundcloud Only)
+####################################################################
+
+def process_complete(vargs):
+    artist_url = vargs['artist_url']
+    client = get_client()
+
+    if 'soundcloud' not in artist_url.lower():
+        artist_url = 'https://soundcloud.com/' + artist_url.lower()
+
+    # Get /Tracks
+    tracks_args = vargs
+    tracks_args['path'] = './Tracks/'
+    if not exists(tracks_args['path']):
+        mkdir(tracks_args['path'])
+    process_soundcloud(tracks_args)
+
+    # Get /Likes
+    likes_args = vargs
+    likes_args['likes'] = True
+    likes_args['path'] = './Likes/'
+    if not exists(likes_args['path']):
+        mkdir(likes_args['path'])
+    # process_soundcloud(likes_args)
+
+    # Get /Playlists
+    # sets_args = vargs
+    # sets_args['sets'] = True
+    # sets_args['path'] = './Sets/'
+    # if not exists(sets_args['path']):
+    #     mkdir(sets_args['path'])
+    # process_soundcloud(sets_args)
+
+    return
 
 ####################################################################
 # SoundCloud
 ####################################################################
-
 
 def process_soundcloud(vargs):
     """
@@ -133,6 +171,7 @@ def process_soundcloud(vargs):
     track_permalink = vargs['track']
     keep_previews = vargs['keep']
     folders = vargs['folders']
+    # sets = vargs['sets']
 
     id3_extras = {}
     one_track = False
@@ -149,6 +188,9 @@ def process_soundcloud(vargs):
             if vargs['likes'] or 'likes' in artist_url.lower():
                 likes = True
 
+    print "ARTIST_URL"
+    print artist_url
+
     if 'likes' in artist_url.lower():
         artist_url = artist_url[0:artist_url.find('/likes')]
         likes = True
@@ -163,6 +205,7 @@ def process_soundcloud(vargs):
             resolved = client.get('/resolve', url=track_url, limit=200)
 
         elif likes:
+            print "LIKES"
             userId = str(client.get('/resolve', url=artist_url).id)
 
             resolved = client.get('/users/' + userId + '/favorites', limit=200, linked_partitioning=1)
@@ -179,6 +222,27 @@ def process_soundcloud(vargs):
                 resolved2 = soundcloud.resource.ResourceList(resolved2['collection'])
                 resolved.collection.extend(resolved2)
             resolved = resolved.collection
+        # elif sets:
+        #     print "SETS"
+        #     userId = str(client.get('/resolve', url=artist_url).id)
+        #     resolved = client.get('/users/' + userId + '/playlists', limit=200, linked_partitioning=1)
+
+        #     next_href = False
+        #     if(hasattr(resolved, 'next_href')):
+        #         next_href = resolved.next_href
+        #     while (next_href):
+
+        #         resolved2 = requests.get(next_href).json()
+        #         if('next_href' in resolved2):
+        #             next_href = resolved2['next_href']
+        #         else:
+        #             next_href = False
+        #         resolved2 = soundcloud.resource.ResourceList(resolved2['collection'])
+        #         resolved.collection.extend(resolved2)
+        #     resolved = resolved.collection
+
+        #     print "RESOLVED"
+        #     print resolved
 
         else:
             resolved = client.get('/resolve', url=artist_url, limit=200)
@@ -426,6 +490,9 @@ def download_tracks(client, tracks, num_tracks=sys.maxsize, downloadable=False, 
                 else:
                     track_filename = join(custom_path, track_filename)
 
+                print "FILE"
+                print track_filename
+
                 if exists(track_filename):
                     puts_safe(colored.yellow("Track already downloaded: ") + colored.white(track_title))
                     continue
@@ -480,6 +547,9 @@ def get_soundcloud_data(url):
     data['artist'] = title_tag.split(' by ')[1].split('|')[0].strip()
     # XXX Do more..
 
+    print "get_soundcloud_data"
+    print parsed
+
     return data
 
 
@@ -493,6 +563,9 @@ def get_soundcloud_api2_data(artist_id):
     response = requests.get(v2_url)
     parsed = response.json()
 
+    print "get_soundcloud_api2_data"
+    print parsed
+
     return parsed
 
 def get_soundcloud_api_playlist_data(playlist_id):
@@ -504,6 +577,9 @@ def get_soundcloud_api_playlist_data(playlist_id):
         playlist_id)
     response = requests.get(url)
     parsed = response.json()
+
+    print "get_soundcloud_api_playlist_data"
+    print parsed
 
     return parsed
 
