@@ -146,7 +146,7 @@ def process_complete(vargs):
     likes_args['path'] = './Likes/'
     if not exists(likes_args['path']):
         mkdir(likes_args['path'])
-    # process_soundcloud(likes_args)
+    process_soundcloud(likes_args)
 
     # Get /Playlists
     # sets_args = vargs
